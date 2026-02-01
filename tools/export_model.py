@@ -29,7 +29,7 @@ if __name__ == "__main__":
 
     torch.onnx.export(
         model, 
-        dummy, 
+        sample, 
         OUT_PATH,
         export_params=True, opset_version=12,
         input_names=["input"], output_names=["output"],
