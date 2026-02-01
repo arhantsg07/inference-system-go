@@ -10,8 +10,7 @@ OUT_PATH = os.path.join(OUT_DIR, "sample.onnx")
 class SampleModel(nn.Module):
     def __init__(self):
         super().__init__()
-        self.flatten = nn.Flatten()
-        self.linear_relu_stack = nn.Sequential(
+        self.net = nn.Sequential(
             nn.Linear(3, 16),
             nn.ReLU(),
             nn.Linear(16, 3),
