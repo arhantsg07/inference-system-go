@@ -28,7 +28,7 @@ func MakePrediction(client pb.InferenceClient, req *pb.PredictRequest) {
 	defer cancel()
 	prediction, err := client.Predict(ctx, req)
 	if err != nil {
-		log.Fatalf("client.Predict failed: %v", err)
+		log.Printf("client.Predict failed: %v", err)
 	}
 	log.Println(prediction)
 }
