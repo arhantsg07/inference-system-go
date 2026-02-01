@@ -8,18 +8,21 @@ This project is structured using standard Go conventions and is designed to be e
 ## 📁 Project Structure
 
 ```
-ml-inference-system/
-├── cmd/
-│   └── server/
-│       └── main.go        # gRPC server entrypoint
-├── proto/
-│   ├── inference.proto   # Protobuf service + messages
-│   └── inference/        # Generated Go code
-│       ├── inference.pb.go
-│       └── inference_grpc.pb.go
+ml-inference-system
+├── README.md
+├── cmd
+│   ├── client
+│   │   └── main.go
+│   └── server
+│       └── main.go
 ├── go.mod
 ├── go.sum
-└── README.md
+└── proto
+    └── inference
+        ├── inference.pb.go
+        ├── inference.proto
+        └── inference_grpc.pb.go
+
 ```
 
 ---
