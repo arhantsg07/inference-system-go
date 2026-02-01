@@ -1,0 +1,19 @@
+syntax="proto3";
+
+package inference;
+
+option go_package = "github.com/arhantsg07/ml-inference-system/proto/inference;inference";
+
+service Inference {
+    rpc Predict (PredictRequest) returns (PredictResponse) {}
+}
+
+message PredictRequest {
+    string ModelName = 1;
+    bytes InputData = 2;
+}
+
+message PredictResponse {
+    bytes OutputData = 1;
+    string Status = 2;
+}

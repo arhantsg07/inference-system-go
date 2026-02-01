@@ -1,0 +1,15 @@
+# Go build output
+*.exe
+*.out
+*.test
+
+# Dependency directory
+vendor/
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store
+
+# Environment files
+.env
