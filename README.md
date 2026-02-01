@@ -69,7 +69,7 @@ go mod tidy
 The protobuf file lives in:
 
 ```
-proto/inference.proto
+proto/inference/inference.proto
 ```
 
 It must include a `go_package` option matching the module path:
@@ -89,10 +89,9 @@ option go_package = "github.com/<your-username>/ml-inference-system/proto/infere
 Run from the **project root**:
 
 ```bash
-protoc \
-  --go_out=. \
-  --go-grpc_out=. \
-  proto/inference/inference.proto
+protoc --go_out=. --go_opt=paths=source_relative \
+    --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+    proto/inference/inference.proto
 ```
 
 Generated files will appear in:
