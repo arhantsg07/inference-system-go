@@ -7,7 +7,12 @@ import numpy as np
 
 app = FastAPI()
 
-MODELS_DIR = Path("models")
+ROOT_DIR = Path(__file__).parent.parent.parent
+MODELS_DIR = ROOT_DIR / "models"
+
+# for checking whether the path passed is correct
+# print(ROOT_DIR)
+# print(MODELS_DIR)
 
 model_cache = {}
 
@@ -73,6 +78,38 @@ async def predict(request: PredictionRequest):
             detail=f"Prediction failed: {str(e)}"
         )        
 
+@app.get("/models")
+async def models():
+    if not MODELS_DIR.exists():
+        return {"models: []"}
+    models = [f.stem for f in MODELS_DIR.glob("*.onnx")]
+    return {"models": models}
+
+@app.get("/model_info/{model_name}")
+async def get_model_information(model_name: str):
+    session = load_model(model_name)
+    
+    input_info = []
+    for inp in session.get_inputs():
+        input_info.append({
+            "name": inp.name,
+            "shape": inp.shape,
+            "type": inp.type
+        })
+
+    output_info = []
+    for out in session.get_outputs():
+        output_info.append({
+            "name": out.name,
+            "shape": out.shape,
+            "type": out.type
+        })
+    
+    return {
+        "model_name": model_name,
+        "inputs": input_info,
+        "outputs": output_info
+    }
 
 @app.get("/")
 async def root():
