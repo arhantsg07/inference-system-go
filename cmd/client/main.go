@@ -5,7 +5,7 @@ import (
 	"flag"
 	"log"
 	"time"
-
+	"encoding/json"
 	pb "github.com/arhantsg07/ml-inference-system/proto/inference"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -20,7 +20,7 @@ var (
 * which is accessed by the client API that the generated code files expose
 * Takes the predict request defined in the proto file, logs the err if failed
 * else prints the prediction (the prediction is harcoded for now)
-*/
+ */
 
 func MakePrediction(client pb.InferenceClient, req *pb.PredictRequest) {
 	log.Printf("Getting the prediction from the model %s for the input %x", req.ModelName, req.InputData)
@@ -38,7 +38,7 @@ func MakePrediction(client pb.InferenceClient, req *pb.PredictRequest) {
 * as mentioned in the official docs : https://grpc.io/docs/languages/go/basics/
 * a client is created and established using the API exposed by the proto code files
 * (pb.NewInferenceClient)
-*/
+ */
 
 func main() {
 	var opts []grpc.DialOption
@@ -49,5 +49,17 @@ func main() {
 	}
 	defer conn.Close()
 	client := pb.NewInferenceClient(conn)
-	MakePrediction(client, &pb.PredictRequest{})
+
+	inputArray := []float64{32.0, 54.1, 12.5}
+
+	// Convert array to JSON bytes
+	inputBytes, err := json.Marshal(inputArray)
+	if err != nil {
+		log.Fatalf("Error marshaling input: %v", err)
+	}
+
+	MakePrediction(client, &pb.PredictRequest{
+		ModelName: "sample",
+		InputData: inputBytes,
+	})
 }
