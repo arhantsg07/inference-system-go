@@ -37,6 +37,9 @@ if __name__ == "__main__":
 
     print(f"Exported ONNX model to: {OUT_PATH}")
 
+    # to test if the model is being exported to onnx format
+    
+    """
     try:
         import onnxruntime as ort
         import numpy as np
@@ -45,4 +48,4 @@ if __name__ == "__main__":
         print("ONNX inference output:", out[0])
     except Exception:
         pass
-
+    """
