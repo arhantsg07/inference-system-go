@@ -39,7 +39,7 @@ type APIResponse struct {
 	Status    string    `json:"status"`
 }
 
-func (s *server) sendDataToAPI(inputData *InputData) (*APIResponse, error) {
+func (s *server) sendDataToAPI(ctx context.Context, inputData *InputData) (*APIResponse, error) {
 	apiURL := "http://localhost:8080/predict"
 
 	requestBody := InputData{
@@ -57,9 +57,12 @@ func (s *server) sendDataToAPI(inputData *InputData) (*APIResponse, error) {
 	log.Printf("Request body: %s", string(jsonData))
 
 	// sending the http post req
-	req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return nil, fmt.Errorf("error creating request: %v", err)
+		return nil, status.Errorf(
+			codes.InvalidArgument,
+			"Failed to create external API request",
+		)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -67,14 +70,20 @@ func (s *server) sendDataToAPI(inputData *InputData) (*APIResponse, error) {
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("error sending request: %v", err)
+		return nil, status.Errorf(
+			codes.Unavailable,
+			"Failed to reach external API", // error seding request
+		)
 	}
 	defer resp.Body.Close()
 
 	// Read response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("error reading response: %v", err)
+		return nil, status.Errorf(
+			codes.Unavailable,
+			"failed to read response from external API",
+		)
 	}
 
 	log.Printf("API Response Status: %d", resp.StatusCode)
@@ -86,7 +95,10 @@ func (s *server) sendDataToAPI(inputData *InputData) (*APIResponse, error) {
 
 	var apiResponse APIResponse
 	if err := json.Unmarshal(body, &apiResponse); err != nil {
-		return nil, fmt.Errorf("Note: Could not unmarshal to APIResponse structure: %v", err)
+		return nil, status.Errorf(
+			codes.Internal,
+			"Failed to parse external API response",
+		)
 	}
 
 	return &apiResponse, nil
@@ -101,8 +113,8 @@ func (s *server) Predict(ctx context.Context, req *pb.PredictRequest) (*pb.Predi
 		log.Printf("failed to unmarshal input: %v", err)
 
 		return nil, status.Errorf(
-	    codes.InvalidArgument,
-	    "input_data must be a JSON array of numbers",
+			codes.InvalidArgument,
+			"input_data must be a JSON array of numbers",
 		)
 	}
 	// inputArray := req.GetInputData()
@@ -120,19 +132,20 @@ func (s *server) Predict(ctx context.Context, req *pb.PredictRequest) (*pb.Predi
 		Input:     inputArray,
 	}
 
-	apiResponse, err := s.sendDataToAPI(input_data)
+	apiResponse, err := s.sendDataToAPI(ctx, input_data)
 	if err != nil {
 		log.Printf("Error sending to external API: %v", err)
-		return &pb.PredictResponse{
-			OutputData: nil,
-			Status:     "Failure",
-		}, fmt.Errorf("failed to call external API: %v", err)
+		return nil, status.Errorf(
+			codes.Unavailable,
+			"failed to call external API",
+		)
 	}
+
+	log.Printf("Successfully sent data to external API")
+	log.Printf("Successfully processed the prediction request")
 
 	log.Printf("Model: %s, Output: %v, Status: %s",
 		apiResponse.ModelName, apiResponse.Output, apiResponse.Status)
-
-	log.Printf("Successfully sent data to external API")
 
 	// converting the response to match the gRPC format
 	// throw err, if failed marshalling
@@ -143,8 +156,7 @@ func (s *server) Predict(ctx context.Context, req *pb.PredictRequest) (*pb.Predi
 			"output empty",
 		)
 	}
-	 
-	
+
 	// if len(outputBytes) == 0 {
 	// 	return nil, status.Errorf(
 	// 		codes.Internal,
@@ -153,7 +165,6 @@ func (s *server) Predict(ctx context.Context, req *pb.PredictRequest) (*pb.Predi
 	// }
 
 	// else return the formatted response to the client
-	log.Printf("Successfully processed the prediction request")
 
 	return &pb.PredictResponse{
 		OutputData: outputBytes,
