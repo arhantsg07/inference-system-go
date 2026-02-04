@@ -12,8 +12,9 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"strings"
 	"time"
-
+	"fmt"
 	pb "github.com/arhantsg07/ml-inference-system/proto/inference"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -66,7 +67,11 @@ type APIResponse struct {
 }
 
 func (s *server) sendDataToAPI(ctx context.Context, inputData *InputData) (*APIResponse, error) {
-	apiURL := "http://localhost:8080/predict"
+	baseURL := os.Getenv("MODEL_SERVER_URL")
+	if baseURL == "" {
+		baseURL = "http://localhost:8080"
+	}
+	apiURL := fmt.Sprintf("%s/predict", strings.TrimRight(baseURL, "/"))
 
 	requestBody := InputData{
 		ModelName: inputData.ModelName,
