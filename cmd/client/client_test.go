@@ -36,10 +36,10 @@ func TestMakePrediction_Success(t *testing.T) {
 				t.Error("Expected context to have a deadline")
 			}
 			
-			// Verify timeout is approximately 10 seconds
+			// Verify timeout is approximately 30 seconds
 			timeout := time.Until(deadline)
-			if timeout < 9*time.Second || timeout > 11*time.Second {
-				t.Errorf("Expected timeout of ~10 seconds, got %v", timeout)
+			if timeout < 29*time.Second || timeout > 31*time.Second {
+				t.Errorf("Expected timeout of ~30 seconds, got %v", timeout)
 			}
 			
 			return expectedResponse, nil

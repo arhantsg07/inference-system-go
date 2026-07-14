@@ -1,51 +1,14 @@
-import os
-import torch
-from torch import nn
+from ultralytics import YOLO
+from pathlib import Path
+import sys
 
-OUT_DIR = os.path.join(os.path.dirname(__file__), "..", "models")
-os.makedirs(OUT_DIR, exist_ok=True)
-OUT_PATH = os.path.join(OUT_DIR, "sample.onnx")
+OUT_DIR = Path(__file__).resolve().parent.parent / "models"
+OUT_DIR.mkdir(exist_ok=True)
 
-# A tiny sample model 
-class SampleModel(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(3, 16),
-            nn.ReLU(),
-            nn.Linear(16, 3),
-        )
-
-    def forward(self, x):
-        return self.net(x)
+MODEL_NAME = sys.argv[1] if len(sys.argv) > 1 else "yolov8n"
 
 if __name__ == "__main__":
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = SampleModel().to(device)
-    model.eval()
-
-    sample = torch.randn(1, 3, dtype=torch.float32, device=device)
-
-    torch.onnx.export(
-        model, 
-        sample, 
-        OUT_PATH,
-        export_params=True, opset_version=12,
-        input_names=["input"], output_names=["output"],
-        dynamic_axes={"input": {0: "batch"}, "output": {0: "batch"}},
-    )
-
-    print(f"Exported ONNX model to: {OUT_PATH}")
-
-    # to test if the model is being exported to onnx format
-    
-    """
-    try:
-        import onnxruntime as ort
-        import numpy as np
-        sess = ort.InferenceSession(OUT_PATH, providers=["CPUExecutionProvider"])
-        out = sess.run(None, {"input": np.random.randn(1, 3).astype(np.float32)})
-        print("ONNX inference output:", out[0])
-    except Exception:
-        pass
-    """
+    model = YOLO(f"{MODEL_NAME}.pt")
+    out_path = OUT_DIR / f"{MODEL_NAME}.onnx"
+    model.export(format="onnx", imgsz=640, simplify=True)
+    print(f"Model exported to: {out_path}")

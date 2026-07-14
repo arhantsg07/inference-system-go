@@ -1,139 +1,139 @@
 # ML Inference System
 
-A minimal, production‑oriented **gRPC‑based ML inference service** written in Go.
-This project is structured using standard Go conventions and is designed to be easy to extend with real ML models, multiple services, and deployment tooling.
+A production-grade **gRPC-based ML inference system** featuring YOLOv8 object detection with ONNX Runtime, FP16/INT8 quantization, GPU acceleration (CUDA), Prometheus metrics, and comprehensive benchmarking.
 
----
-
-## 📁 Project Structure
+## Architecture
 
 ```
-ml-inference-system
-├── README.md
-├── cmd
-│   ├── client
-│   │   └── main.go
-│   └── server
-│       └── main.go
-├── go.mod
-├── go.sum
-└── proto
-    └── inference
-        ├── inference.pb.go
-        ├── inference.proto
-        └── inference_grpc.pb.go
-
+Client (Go/gRPC) → Go gRPC Server (:50051) → Python FastAPI Server (:8080) → ONNX Runtime → YOLOv8 Model
+                                                                                         ↓
+                                                                               Prometheus Metrics (:9090)
 ```
 
----
+## Features
 
-## 🚀 Getting Started
+- **gRPC API** for inference requests with context deadlines
+- **YOLOv8n** object detection via ONNX Runtime (CPU / CUDA GPU)
+- **Quantization support**: FP16 and INT8 model variants
+- **Model size**: FP32 (12.85 MB) → FP16 (6.45 MB) → INT8 (3.50 MB)
+- **Prometheus metrics**: request count, latency histograms
+- **Benchmark suite**: mean, median, p95, p99 latency + throughput
+
+## Quick Start
 
 ### Prerequisites
 
-* Go **1.21+** (recommended: latest stable)
-* `protoc` (Protocol Buffers compiler)
-* Go protobuf plugins
+- Go 1.21+
+- Python 3.10+
 
-Install `protoc` plugins (one‑time):
-
-```bash
-go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-```
-
-Make sure `$GOPATH/bin` is in your `PATH`.
-
----
-
-## 📦 Initialize the Project
-
-Initialize the Go module:
+### Setup
 
 ```bash
-go mod init github.com/<your-username>/ml-inference-system
-```
+# Python environment
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r services/model_server/requirements.txt
 
-Install dependencies:
-
-```bash
-go get google.golang.org/grpc
-go get google.golang.org/protobuf
+# Go dependencies
 go mod tidy
 ```
 
----
-
-## 🧬 Protobuf Definition
-
-The protobuf file lives in:
-
-```
-proto/inference/inference.proto
-```
-
-It must include a `go_package` option matching the module path:
-
-```proto
-syntax = "proto3";
-
-package inference;
-
-option go_package = "github.com/<your-username>/ml-inference-system/proto/inference;inference";
-```
-
----
-
-## 🔧 Generate gRPC Code
-
-Run from the **project root**:
+### Run the system
 
 ```bash
-protoc --go_out=. --go_opt=paths=source_relative \
-    --go-grpc_out=. --go-grpc_opt=paths=source_relative \
-    proto/inference/inference.proto
+# Terminal 1: Start Python model server
+source .venv/bin/activate
+python3 services/model_server/main.py
+
+# Terminal 2: Start Go gRPC server
+go run cmd/server/main.go
+
+# Terminal 3: Run inference client
+go run cmd/client/main.go models/sample_test.jpg
 ```
 
-Generated files will appear in:
+### Models
 
-```
-proto/inference/
-```
+| Model | Format | Size | vs FP32 |
+|---|---|---|---|
+| `yolov8n.onnx` | FP32 | 12.85 MB | — |
+| `yolov8n_fp16.onnx` | FP16 | 6.45 MB | 50.2% |
+| `yolov8n_int8.onnx` | INT8 | 3.50 MB | 27.2% |
 
----
+## Benchmark Results
 
-## 🖥 Running the Server
+**Hardware:** CPU: 11th Gen Intel Core i5-11400H, GPU: NVIDIA GeForce GTX 1650 (4GB, no Tensor Cores)
 
-From the project root:
+### CPU (ONNX Runtime)
+
+| Metric | FP32 | FP16 | INT8 |
+|---|---|---|---|
+| **Inference Mean** | 49.21 ms | 52.25 ms | 161.29 ms |
+| **Pipeline Mean** | 51.75 ms | 56.27 ms | 153.04 ms |
+| **Throughput** | 20.3 req/s | 19.1 req/s | 6.2 req/s |
+
+### GPU / CUDA (ONNX Runtime)
+
+| Metric | FP32 | FP16 | INT8 |
+|---|---|---|---|
+| **Inference Mean** | **11.99 ms** | 30.82 ms | 235.10 ms |
+| **Throughput** | **83.4 req/s** | 32.4 req/s | 4.3 req/s |
+| **vs CPU FP32** | **4.1x faster** | — | — |
+
+### Key findings
+
+- **GPU inference (FP32):** 11.99 ms — **4.1x faster** than CPU (49.21 ms), the optimal configuration for this GPU
+- **FP16 quantization:** 50% model size reduction. On GPUs without Tensor Cores (GTX 1650), FP16 is slower than FP32 due to Cast node overhead from Resize ops. On Tensor Core GPUs (RTX series), FP16 provides significant speedup
+- **INT8 dynamic quantization:** 73% model compression for memory-constrained deployment. On GPUs, dynamic INT8 adds dequantize overhead — static INT8 quantization (via TensorRT) is recommended for GPU speedup
+- **CPU:** FP32 provides best latency (49.21 ms); FP16 offers size savings with negligible latency impact
+- All quantized models maintain detection accuracy (max confidence within ±3% of FP32)
+
+## Benchmarking
 
 ```bash
-cd cmd/server
-go run main.go
+# CPU benchmarks
+source .venv/bin/activate
+python3 tools/benchmark.py --models yolov8n yolov8n_fp16 yolov8n_int8
+
+# GPU benchmarks (requires CUDA)
+export LD_LIBRARY_PATH=".venv/lib/python3.12/site-packages/nvidia/cudnn/lib:.venv/lib/python3.12/site-packages/nvidia/cu13/lib:$LD_LIBRARY_PATH"
+python3 tools/benchmark.py --models yolov8n --provider CUDAExecutionProvider
 ```
 
-The server will start listening on the configured gRPC port (see `main.go`).
-
----
-
-## 🖥 Running the client
-
-From the project root:
+## Model Export & Quantization
 
 ```bash
-cd cmd/client
-go run main.go
+# Export YOLOv8 from PyTorch to ONNX
+source .venv/bin/activate
+python3 tools/export_model.py yolov8n
+
+# Quantize to FP16 and INT8
+python3 tools/quantize.py
 ```
 
-The client will send the request on the configured gRPC port (see `main.go`).
+## API
 
----
+### gRPC (port 50051)
 
-## 📥 Importing the Protobuf Package
-
-In Go code:
-
-```go
-import pb "github.com/<your-username>/ml-inference-system/proto/inference"
+```protobuf
+rpc Predict(PredictRequest) returns (PredictResponse)
 ```
 
----
+### REST (port 8080, Python server)
+
+```
+POST /predict          Run inference (JSON with base64 image)
+GET  /models           List available models
+GET  /model_info/{id}  Get model input/output details
+```
+
+### Metrics (port 9090)
+
+```
+GET /metrics    Prometheus metrics
+GET /health     Health check
+```
+
+## Resume Description
+
+> Designed and built a production-grade ML inference system implementing a multi-language architecture (Go + Python) with gRPC communication and GPU-accelerated YOLOv8 object detection, achieving 12ms inference latency — 4.1x faster than CPU baseline (49ms → 12ms with CUDA). Implemented ONNX Runtime model serving with FP16 and INT8 quantization support, reducing model footprint from 12.85 MB to 3.50 MB (73% compression). Built a comprehensive benchmarking framework measuring latency (mean, p95, p99), throughput, and comparative speedup across CPU/GPU execution providers and three quantization levels. Integrated Prometheus monitoring for production observability with request count and latency histograms.
