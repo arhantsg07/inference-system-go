@@ -2,8 +2,20 @@
 *.exe
 *.out
 *.test
+server
+client
+cmd/server/server
+cmd/client/client
 
-.venv
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Model files (can be regenerated via tools/export_model.py)
+*.onnx
+*.onnx.data
+*.pt
 
 # Dependency directory
 vendor/
@@ -15,3 +27,6 @@ vendor/
 
 # Environment files
 .env
+
+# Generated test image
+models/sample_test.jpg

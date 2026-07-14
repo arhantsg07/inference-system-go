@@ -11,8 +11,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"syscall"
 	"strings"
+	"syscall"
 	"time"
 	"fmt"
 	pb "github.com/arhantsg07/ml-inference-system/proto/inference"
@@ -27,7 +27,6 @@ var (
 	port = flag.String("port", ":50051", "Server port, include ':' e.g. :50051")
 )
 
-// server implements the Inference gRPC service.
 type server struct {
 	pb.UnimplementedInferenceServer
 	httpClient *http.Client
@@ -56,14 +55,15 @@ func init() {
 }
 
 type InputData struct {
-	ModelName string    `json:"model_name"`
-	Input     []float64 `json:"input"`
+	ModelName string `json:"model_name"`
+	Input     string `json:"input"`
 }
 
 type APIResponse struct {
-	ModelName string    `json:"model_name"`
-	Output    []float64 `json:"output"`
-	Status    string    `json:"status"`
+	ModelName        string         `json:"model_name"`
+	Output           []interface{}  `json:"output"`
+	Status           string         `json:"status"`
+	InferenceTimeMs  float64        `json:"inference_time_ms"`
 }
 
 func (s *server) sendDataToAPI(ctx context.Context, inputData *InputData) (*APIResponse, error) {
@@ -86,15 +86,8 @@ func (s *server) sendDataToAPI(ctx context.Context, inputData *InputData) (*APIR
 		)
 	}
 
-	// logging (trim long bodies in production)
-	log.Printf("Sending request to %s", apiURL)
-	if len(jsonData) < 4096 {
-		log.Printf("Request body: %s", string(jsonData))
-	} else {
-		log.Printf("Request body too large to print (%d bytes)", len(jsonData))
-	}
+	log.Printf("Sending request to %s (model=%s, body=%d bytes)", apiURL, inputData.ModelName, len(jsonData))
 
-	// sending the http post req with context from gRPC
 	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, status.Errorf(
@@ -115,7 +108,6 @@ func (s *server) sendDataToAPI(ctx context.Context, inputData *InputData) (*APIR
 	}
 	defer resp.Body.Close()
 
-	// Read response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, status.Errorf(
@@ -124,15 +116,9 @@ func (s *server) sendDataToAPI(ctx context.Context, inputData *InputData) (*APIR
 		)
 	}
 
-	log.Printf("API Response Status: %d", resp.StatusCode)
-	if len(body) < 4096 {
-		log.Printf("API Response Body: %s", string(body))
-	} else {
-		log.Printf("API response body too large to print (%d bytes)", len(body))
-	}
+	log.Printf("API Response Status: %d, body=%d bytes", resp.StatusCode, len(body))
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// Map 4xx to InvalidArgument, 5xx to Internal/Unavailable
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
 			return nil, status.Errorf(codes.InvalidArgument, "API returned status %d: %s", resp.StatusCode, string(body))
 		}
@@ -148,10 +134,8 @@ func (s *server) sendDataToAPI(ctx context.Context, inputData *InputData) (*APIR
 	}
 
 	return &apiResponse, nil
-
 }
 
-// Predict takes the input data and then calls the sendDataToAPI function.
 func (s *server) Predict(ctx context.Context, req *pb.PredictRequest) (*pb.PredictResponse, error) {
 	start := time.Now()
 	method := "Predict"
@@ -161,34 +145,35 @@ func (s *server) Predict(ctx context.Context, req *pb.PredictRequest) (*pb.Predi
 		requestCount.WithLabelValues(method, statusLabel).Inc()
 	}()
 
-	var inputArray []float64
+	var requestData InputData
 
-	if err := json.Unmarshal(req.GetInputData(), &inputArray); err != nil {
+	if err := json.Unmarshal(req.GetInputData(), &requestData); err != nil {
 		log.Printf("failed to unmarshal input: %v", err)
 		statusLabel = "bad-input"
 
 		return nil, status.Errorf(
 			codes.InvalidArgument,
-			"input_data must be a JSON array of numbers",
+			"input_data must be a JSON object with model_name and input fields",
 		)
 	}
 
-	if len(inputArray) == 0 {
+	if requestData.ModelName == "" {
+		statusLabel = "empty-model"
+		return nil, status.Errorf(
+			codes.InvalidArgument, "model_name cannot be empty",
+		)
+	}
+
+	if requestData.Input == "" {
 		statusLabel = "empty-input"
 		return nil, status.Errorf(
-			codes.InvalidArgument, "input data cannot be empty",
+			codes.InvalidArgument, "input cannot be empty",
 		)
 	}
 
-	log.Printf("Parsed input array: %v", inputArray)
+	log.Printf("Predict request: model=%s, input_size=%d bytes", requestData.ModelName, len(requestData.Input))
 
-	// referring to the above struct
-	input_data := &InputData{
-		ModelName: req.GetModelName(),
-		Input:     inputArray,
-	}
-
-	apiResponse, err := s.sendDataToAPI(ctx, input_data)
+	apiResponse, err := s.sendDataToAPI(ctx, &requestData)
 	if err != nil {
 		log.Printf("Error sending to external API: %v", err)
 		statusLabel = "api-error"
@@ -198,24 +183,25 @@ func (s *server) Predict(ctx context.Context, req *pb.PredictRequest) (*pb.Predi
 		)
 	}
 
-	log.Printf("Successfully sent data to external API")
-	log.Printf("Successfully processed the prediction request")
+	log.Printf("Prediction: model=%s, detections=%d, inference_time=%.2fms, status=%s",
+		apiResponse.ModelName, len(apiResponse.Output), apiResponse.InferenceTimeMs, apiResponse.Status)
 
-	log.Printf("Model: %s, Output: %v, Status: %s",
-		apiResponse.ModelName, apiResponse.Output, apiResponse.Status)
-
-	// converting the response to match the gRPC format
-	// throw err, if failed marshalling
-	outputBytes, err := json.Marshal(apiResponse.Output)
+	// include inference_time_ms in output data
+	enhancedOutput := map[string]interface{}{
+		"detections":       apiResponse.Output,
+		"inference_time_ms": apiResponse.InferenceTimeMs,
+	}
+	enhancedBytes, err := json.Marshal(enhancedOutput)
 	if err != nil {
 		statusLabel = "internal-error"
 		return nil, status.Errorf(
 			codes.Internal,
-			"failed to marshal output: %v", err,
+			"failed to marshal enhanced output: %v", err,
 		)
 	}
+
 	return &pb.PredictResponse{
-		OutputData: outputBytes,
+		OutputData: enhancedBytes,
 		Status:     apiResponse.Status,
 	}, nil
 }
@@ -229,7 +215,7 @@ func main() {
 	}
 
 	httpClient := &http.Client{
-		Timeout: 10 * time.Second,
+		Timeout: 30 * time.Second,
 	}
 
 	grpcServer := grpc.NewServer()
@@ -237,7 +223,6 @@ func main() {
 		httpClient: httpClient,
 	})
 
-	// Start HTTP server for /metrics and /health
 	httpMux := http.NewServeMux()
 	httpMux.Handle("/metrics", promhttp.Handler())
 	httpMux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -250,7 +235,6 @@ func main() {
 		Handler: httpMux,
 	}
 
-	// Run HTTP server in background
 	go func() {
 		log.Printf("HTTP metrics server listening on %s", httpSrv.Addr)
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -258,7 +242,6 @@ func main() {
 		}
 	}()
 
-	// Run gRPC server in background
 	go func() {
 		log.Printf("gRPC Inference server listening on %s", *port)
 		if err := grpcServer.Serve(lis); err != nil {
@@ -266,20 +249,17 @@ func main() {
 		}
 	}()
 
-	// Handle graceful shutdown
-	stop := make(chan os.Signal, 1)						// makes a memory allocation for receiving signal
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)  // registers the interest in the signals interrupt, sigterm
-	<-stop												// waits for the signal
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	<-stop
 	log.Printf("Shutting down servers...")
 
-	// Shutdown HTTP server with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := httpSrv.Shutdown(ctx); err != nil {
 		log.Printf("HTTP server Shutdown: %v", err)
 	}
 
-	// Gracefully stop gRPC server; give it some time then force stop
 	stopped := make(chan struct{})
 	go func() {
 		grpcServer.GracefulStop()

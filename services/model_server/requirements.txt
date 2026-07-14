@@ -2,4 +2,5 @@ fastapi
 uvicorn
 onnxruntime
 numpy
+opencv-python-headless
 pydantic
