@@ -133,7 +133,3 @@ GET  /model_info/{id}  Get model input/output details
 GET /metrics    Prometheus metrics
 GET /health     Health check
 ```
-
-## Resume Description
-
-> Designed and built a production-grade ML inference system implementing a multi-language architecture (Go + Python) with gRPC communication and GPU-accelerated YOLOv8 object detection, achieving 12ms inference latency — 4.1x faster than CPU baseline (49ms → 12ms with CUDA). Implemented ONNX Runtime model serving with FP16 and INT8 quantization support, reducing model footprint from 12.85 MB to 3.50 MB (73% compression). Built a comprehensive benchmarking framework measuring latency (mean, p95, p99), throughput, and comparative speedup across CPU/GPU execution providers and three quantization levels. Integrated Prometheus monitoring for production observability with request count and latency histograms.
